@@ -31,22 +31,23 @@ interface Recipe {
   id: string
   name: string
   style: string
-  materials: {
-    wallColor: string
-    floorType: string
-    counterType: string
-  }
+  floorMode: 'keep' | 'change'
+  wallMode: 'keep' | 'repaint'
+  floorType?: string
+  wallColor?: string
   tasks: string[]
 }
 
 const ROOM_STYLES = [
+  'None',            // NEW: default means "don’t restyle"
   'Modern',
-  'Scandinavian', 
+  'Scandinavian',
   'Farmhouse',
   'Minimal',
   'Boho',
   'Luxury'
 ]
+
 
 const ROOM_TYPES = [
   'living_room',
@@ -75,10 +76,15 @@ const WALL_COLORS = [
 export default function StageRight() {
   const [photos, setPhotos] = useState<Photo[]>([])
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([])
-  const [currentStyle, setCurrentStyle] = useState('Modern')
-  const [currentFloor, setCurrentFloor] = useState('light_oak')
-  const [currentWallColor, setCurrentWallColor] = useState('#FFFFFF')
-  const [declutterEnabled, setDeclutterEnabled] = useState(true)
+  const [currentStyle, setCurrentStyle] = useState('None')        // was 'Modern'
+  const [currentFloor, setCurrentFloor] = useState<'keep' | string>('keep')
+  const [currentWallColor, setCurrentWallColor] = useState<'keep' | string>('keep')
+  const [roomCondition, setRoomCondition] = useState<'vacant' | 'furnished'>('vacant')
+
+  // right after currentWallColor:
+  const [floorMode, setFloorMode] = useState<'keep' | 'change'>('keep')      // NEW
+  const [wallMode, setWallMode] = useState<'keep' | 'repaint'>('keep')     // NEW
+  const [declutterEnabled, setDeclutterEnabled] = useState(false)
   const [batchPrompt, setBatchPrompt] = useState('')
   const [showBefore, setShowBefore] = useState(true)
   const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -86,17 +92,31 @@ export default function StageRight() {
   const [progress, setProgress] = useState(0)
   const [apiKeyMissing, setApiKeyMissing] = useState(false)
 
+  // Build a final custom prompt that respects "keep" sentinels
+  function buildCustomPromptForKeep(userPrompt: string) {
+    const hints: string[] = [];
+
+    // Only add these when users picked "keep"
+    if (currentStyle === 'None') hints.push('Do not change the interior design style.');
+    if (currentFloor === 'keep') hints.push('Do not change or replace flooring.');
+    if (currentWallColor === 'keep') hints.push('Do not repaint or alter wall color.');
+// Always include the strong door/ceiling rule to prevent blocking
+    hints.push('Keep all doors and egress zones totally clear; relocate any item that lands within ~36 inches (1 m) of any doorway or within the door swing. Do not add or modify any ceiling fixtures.');
+    // join user's free text + our guard hints
+    return [userPrompt.trim(), hints.join(' ')].filter(Boolean).join('\n\n');
+  }
+
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
-    if (photos.length + files.length > 30) {
-      alert('Maximum 30 photos allowed')
+    if (photos.length + files.length > 10) {
+      alert('Maximum 10 photos allowed')
       return
     }
 
     files.forEach(file => {
       const id = Math.random().toString(36).substr(2, 9)
       const preview = URL.createObjectURL(file)
-      
+
       setPhotos(prev => [...prev, {
         id,
         file,
@@ -109,8 +129,8 @@ export default function StageRight() {
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     const files = Array.from(event.dataTransfer.files)
-    if (photos.length + files.length > 30) {
-      alert('Maximum 30 photos allowed')
+    if (photos.length + files.length > 10) {
+      alert('Maximum 10 photos allowed')
       return
     }
 
@@ -118,7 +138,7 @@ export default function StageRight() {
       if (file.type.startsWith('image/')) {
         const id = Math.random().toString(36).substr(2, 9)
         const preview = URL.createObjectURL(file)
-        
+
         setPhotos(prev => [...prev, {
           id,
           file,
@@ -139,8 +159,8 @@ export default function StageRight() {
   }
 
   const togglePhotoSelection = (id: string) => {
-    setSelectedPhotos(prev => 
-      prev.includes(id) 
+    setSelectedPhotos(prev =>
+      prev.includes(id)
         ? prev.filter(photoId => photoId !== id)
         : [...prev, id]
     )
@@ -156,17 +176,27 @@ export default function StageRight() {
     setProgress(0)
     setApiKeyMissing(false)
 
+    console.info('[StageRight] Processing photos:', {
+      count: selectedPhotos.length,
+      style: currentStyle,
+      floorMode,
+      currentFloor,
+      wallMode,
+      currentWallColor,
+      declutter: declutterEnabled,
+    })
+
     try {
       // Update selected photos to processing status
-      setPhotos(prev => prev.map(photo => 
-        selectedPhotos.includes(photo.id) 
+      setPhotos(prev => prev.map(photo =>
+        selectedPhotos.includes(photo.id)
           ? { ...photo, status: 'processing' }
           : photo
       ))
 
       // Create FormData for API request
       const formData = new FormData()
-      
+
       // Add selected photo files
       selectedPhotos.forEach(photoId => {
         const photo = photos.find(p => p.id === photoId)
@@ -176,12 +206,38 @@ export default function StageRight() {
       })
 
       // Add processing parameters
-      formData.append('style', currentStyle)
-      formData.append('floorType', currentFloor)
-      formData.append('wallColor', currentWallColor)
-      formData.append('declutter', declutterEnabled.toString())
-      if (batchPrompt) {
-        formData.append('customPrompt', batchPrompt)
+      formData.append('style', currentStyle);          // "None" means keep style
+      formData.append('floorType', currentFloor);      // "keep" means do not change
+      formData.append('wallColor', currentWallColor);  // "keep" means do not repaint
+      formData.append('declutter', declutterEnabled.toString());
+      formData.append('roomCondition', roomCondition);
+
+      // Build protective hints for the model
+      const userPrompt = (batchPrompt || '').trim()
+      const guardHints = [
+        currentStyle === 'None' ? 'Do not change the interior design style.' : '',
+        currentFloor === 'keep' ? 'Do not change or replace flooring.' : '',
+        currentWallColor === 'keep' ? 'Do not repaint or alter wall color.' : '',
+        // hard rules that catch your exact issues:
+        'Do not add or modify any ceiling fixtures or textures; keep ceiling exactly as in the source.',
+        'Keep all doors and egress clear; do not place tables, plants, or pillows within ~36 inches of any doorway or within the door swing.',
+        'Do not block or alter wall AC units, thermostats, detectors, or switches.'
+      ].filter(Boolean).join(' ')
+
+      // const finalPrompt = [userPrompt, guardHints].filter(Boolean).join('\n\n')
+
+      console.info('[StageRight] customPrompt provided?', Boolean(userPrompt), {
+        length: userPrompt.length,
+        style: currentStyle, floor: currentFloor, wall: currentWallColor, roomCondition
+      });
+      setBatchPrompt(''); // clear textarea now
+
+      const hasKeep =
+        currentStyle === 'None' || currentFloor === 'keep' || currentWallColor === 'keep';
+
+      if (hasKeep || userPrompt) {
+        const finalPrompt = buildCustomPromptForKeep(userPrompt);
+        if (finalPrompt) formData.append('customPrompt', finalPrompt);
       }
 
       // Call API
@@ -206,15 +262,15 @@ export default function StageRight() {
       // Update photos with results
       result.results.forEach((apiResult: any, index: number) => {
         const photoId = selectedPhotos[index]
-        setPhotos(prev => prev.map(photo => 
-          photo.id === photoId 
-            ? { 
-                ...photo, 
-                status: apiResult.status === 'completed' ? 'completed' : 'error',
-                editedUrl: apiResult.processedUrl,
-                editLog: apiResult.editLog,
-                error: apiResult.error
-              }
+        setPhotos(prev => prev.map(photo =>
+          photo.id === photoId
+            ? {
+              ...photo,
+              status: apiResult.status === 'completed' ? 'completed' : 'error',
+              editedUrl: apiResult.processedUrl,
+              editLog: apiResult.editLog,
+              error: apiResult.error
+            }
             : photo
         ))
         setProgress(((index + 1) / selectedPhotos.length) * 100)
@@ -222,10 +278,10 @@ export default function StageRight() {
 
     } catch (error) {
       console.error('Processing error:', error)
-      
+
       // Update failed photos
-      setPhotos(prev => prev.map(photo => 
-        selectedPhotos.includes(photo.id) 
+      setPhotos(prev => prev.map(photo =>
+        selectedPhotos.includes(photo.id)
           ? { ...photo, status: 'error', error: error instanceof Error ? error.message : 'Processing failed' }
           : photo
       ))
@@ -239,21 +295,21 @@ export default function StageRight() {
       id: Math.random().toString(36).substr(2, 9),
       name: `${currentStyle} Recipe`,
       style: currentStyle,
-      materials: {
-        wallColor: currentWallColor,
-        floorType: currentFloor,
-        counterType: 'white_quartz'
-      },
-      tasks: declutterEnabled ? ['virtual_staging', 'declutter'] : ['virtual_staging']
+      floorMode,
+      wallMode,
+      floorType: floorMode === 'change' ? currentFloor : undefined,
+      wallColor: wallMode === 'repaint' ? currentWallColor : undefined,
+      tasks: declutterEnabled ? ['virtual_staging', 'declutter'] : ['virtual_staging'],
     }
-    
     setRecipes(prev => [...prev, recipe])
   }
 
   const applyRecipe = (recipe: Recipe) => {
     setCurrentStyle(recipe.style)
-    setCurrentFloor(recipe.materials.floorType)
-    setCurrentWallColor(recipe.materials.wallColor)
+    setFloorMode(recipe.floorMode || 'keep')
+    setWallMode(recipe.wallMode || 'keep')
+    if (recipe.floorType) setCurrentFloor(recipe.floorType)
+    if (recipe.wallColor) setCurrentWallColor(recipe.wallColor)
     setDeclutterEnabled(recipe.tasks.includes('declutter'))
   }
 
@@ -339,7 +395,7 @@ export default function StageRight() {
                     Drag & drop photos here or click to browse
                   </p>
                   <p className="text-xs text-slate-500">
-                    Up to 30 photos • JPG, PNG
+                    Up to 10 photos • JPG, PNG
                   </p>
                   <input
                     id="file-upload"
@@ -351,7 +407,7 @@ export default function StageRight() {
                   />
                 </div>
                 <div className="mt-4 flex justify-between items-center text-sm">
-                  <span className="text-slate-600">{photos.length}/30 photos uploaded</span>
+                  <span className="text-slate-600">{photos.length}/10 photos uploaded</span>
                   {photos.length > 0 && (
                     <div className="space-x-2">
                       <Button variant="ghost" size="sm" onClick={selectAll}>
@@ -390,45 +446,120 @@ export default function StageRight() {
               </CardContent>
             </Card>
 
-            {/* Materials */}
+            {/* Optional Edits (no defaults) Remove Materials*/}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Materials</CardTitle>
+                <CardTitle className="text-lg">Optional Edits</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
+                {/* Flooring */}
                 <div>
-                  <Label className="text-sm font-medium">Floor Type</Label>
-                  <Select value={currentFloor} onValueChange={setCurrentFloor}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FLOOR_TYPES.map(floor => (
-                        <SelectItem key={floor} value={floor}>
-                          {floor.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-sm font-medium">Room Condition</Label>
+                  <div className="mt-2 flex items-center gap-4">
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="roomCondition" checked={roomCondition === 'furnished'} onChange={() => setRoomCondition('furnished')} />
+                      <span className="text-sm">Furnished (light restyle)</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="roomCondition" checked={roomCondition === 'vacant'} onChange={() => setRoomCondition('vacant')} />
+                      <span className="text-sm">Vacant (add furniture)</span>
+                    </label>
+                  </div>
+
+                  <Label className="text-sm font-medium">Flooring</Label>
+                  <div className="mt-2 flex items-center gap-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="flooring"
+                        checked={floorMode === 'keep'}
+                        onChange={() => setFloorMode('keep')}
+                      />
+                      <span className="text-sm">Keep as-is</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="flooring"
+                        checked={floorMode === 'change'}
+                        onChange={() => setFloorMode('change')}
+                      />
+                      <span className="text-sm">Change to</span>
+                    </label>
+
+                    {floorMode === 'change' && (
+                      <Select value={currentFloor} onValueChange={setCurrentFloor}>
+                        <SelectTrigger className="w-56">
+                          <SelectValue placeholder="Choose floor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {FLOOR_TYPES.map(floor => (
+                            <SelectItem key={floor} value={floor}>
+                              {floor.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 </div>
 
+                {/* Walls */}
                 <div>
-                  <Label className="text-sm font-medium">Wall Color</Label>
-                  <div className="flex space-x-2 mt-2">
-                    {WALL_COLORS.map(color => (
-                      <button
-                        key={color}
-                        className={`w-8 h-8 rounded-full border-2 ${
-                          currentWallColor === color ? 'border-blue-500' : 'border-slate-300'
-                        }`}
-                        style={{ backgroundColor: color }}
-                        onClick={() => setCurrentWallColor(color)}
+                  <Label className="text-sm font-medium">Walls</Label>
+                  <div className="mt-2 flex items-center gap-3">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="walls"
+                        checked={wallMode === 'keep'}
+                        onChange={() => setWallMode('keep')}
                       />
-                    ))}
+                      <span className="text-sm">Keep as-is</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="walls"
+                        checked={wallMode === 'repaint'}
+                        onChange={() => setWallMode('repaint')}
+                      />
+                      <span className="text-sm">Repaint</span>
+                    </label>
                   </div>
+
+                  {wallMode === 'repaint' && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {WALL_COLORS.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`w-8 h-8 rounded-full border-2 ${currentWallColor === color ? 'border-blue-500' : 'border-slate-300'
+                            }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setCurrentWallColor(color)}
+                          aria-label={`Set wall color ${color}`}
+                        />
+                      ))}
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={currentWallColor}
+                          onChange={(e) => setCurrentWallColor(e.target.value)}
+                          className="w-32"
+                          placeholder="#FFFFFF"
+                        />
+                        <span className="text-xs text-slate-500">Hex</span>
+                      </div>
+                    </div>
+                  )}
+                  {wallMode === 'keep' && (
+                    <p className="text-xs text-slate-500 mt-2">Walls will not be repainted.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
+
 
             {/* Options */}
             <Card>
@@ -462,8 +593,8 @@ export default function StageRight() {
             </Card>
 
             {/* Process Button */}
-            <Button 
-              onClick={processPhotos} 
+            <Button
+              onClick={processPhotos}
               disabled={processing || selectedPhotos.length === 0}
               className="w-full"
               size="lg"
@@ -499,9 +630,8 @@ export default function StageRight() {
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {photos.map(photo => (
-                <Card key={photo.id} className={`cursor-pointer transition-all ${
-                  selectedPhotos.includes(photo.id) ? 'ring-2 ring-blue-500' : ''
-                }`}>
+                <Card key={photo.id} className={`cursor-pointer transition-all ${selectedPhotos.includes(photo.id) ? 'ring-2 ring-blue-500' : ''
+                  }`}>
                   <CardContent className="p-0">
                     <div className="relative">
                       <img
@@ -510,13 +640,13 @@ export default function StageRight() {
                         className="w-full h-48 object-cover rounded-t-lg"
                         onClick={() => togglePhotoSelection(photo.id)}
                       />
-                      
+
                       {/* Status Badge */}
                       <div className="absolute top-2 left-2">
                         <Badge variant={
                           photo.status === 'completed' ? 'default' :
-                          photo.status === 'processing' ? 'secondary' :
-                          photo.status === 'error' ? 'destructive' : 'outline'
+                            photo.status === 'processing' ? 'secondary' :
+                              photo.status === 'error' ? 'destructive' : 'outline'
                         }>
                           {photo.status}
                         </Badge>
@@ -524,11 +654,10 @@ export default function StageRight() {
 
                       {/* Selection Checkbox */}
                       <div className="absolute top-2 right-2">
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                          selectedPhotos.includes(photo.id) 
-                            ? 'bg-blue-500 border-blue-500' 
-                            : 'bg-white border-slate-300'
-                        }`}>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${selectedPhotos.includes(photo.id)
+                          ? 'bg-blue-500 border-blue-500'
+                          : 'bg-white border-slate-300'
+                          }`}>
                           {selectedPhotos.includes(photo.id) && (
                             <div className="w-2 h-2 bg-white rounded-full" />
                           )}
@@ -568,7 +697,7 @@ export default function StageRight() {
               <TabsTrigger value="queue">Queue</TabsTrigger>
               <TabsTrigger value="variants">Variants</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="queue" className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-medium">Processing Queue</h3>
@@ -581,7 +710,7 @@ export default function StageRight() {
                   {showBefore ? 'Before' : 'After'}
                 </Button>
               </div>
-              
+
               {selectedPhotos.length === 0 ? (
                 <p className="text-sm text-slate-600">Select photos to add to queue</p>
               ) : (
@@ -601,7 +730,7 @@ export default function StageRight() {
                 </div>
               )}
             </TabsContent>
-            
+
             <TabsContent value="variants" className="space-y-4">
               <h3 className="font-medium">Style Variants</h3>
               <p className="text-sm text-slate-600">
