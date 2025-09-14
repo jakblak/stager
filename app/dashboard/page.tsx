@@ -37,9 +37,19 @@ interface Recipe {
   wallColor?: string
   tasks: string[]
 }
+type PhotoStatus = 'idle' | 'processing' | 'completed' | 'error'
+
+interface StagedPhoto {
+  id: string
+  file: File
+  previewUrl: string   // object URL for the original (before)
+  resultUrl?: string   // data URL after processing (after)
+  status: PhotoStatus
+  error?: string
+}
 
 const ROOM_STYLES = [
-  'None',            // NEW: default means "don’t restyle"
+  'None',            // NEW: default means "don't restyle"
   'Modern',
   'Scandinavian',
   'Farmhouse',
@@ -276,6 +286,17 @@ export default function StageRight() {
         setProgress(((index + 1) / selectedPhotos.length) * 100)
       })
 
+      // Check if any photos completed successfully
+      const hasCompletedPhotos = result.results.some((r: any) => r.status === 'completed')
+      if (hasCompletedPhotos) {
+        // Auto-switch to "After" view when processing completes successfully
+        setShowBefore(false)
+      }
+
+      // Reset processing state and clear selection after completion
+      setProcessing(false)
+      setSelectedPhotos([]) // Clear selection after processing
+
     } catch (error) {
       console.error('Processing error:', error)
 
@@ -285,9 +306,9 @@ export default function StageRight() {
           ? { ...photo, status: 'error', error: error instanceof Error ? error.message : 'Processing failed' }
           : photo
       ))
+      
+      setProcessing(false)
     }
-
-    setProcessing(false)
   }
 
   const saveRecipe = () => {
@@ -331,6 +352,16 @@ export default function StageRight() {
 
   const clearSelection = () => {
     setSelectedPhotos([])
+  }
+
+  // Helper function to get the display image for a photo
+  const getDisplayImage = (photo: Photo) => {
+    // For completed photos, always show the processed result (unless user explicitly toggles to Before)
+    if (photo.status === 'completed' && photo.editedUrl) {
+      return showBefore ? photo.preview : photo.editedUrl
+    }
+    // For non-completed photos, always show the original
+    return photo.preview
   }
 
   return (
@@ -422,7 +453,7 @@ export default function StageRight() {
               </CardContent>
             </Card>
 
-            {/* Style Presets */}
+            {/* Room Style */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center">
@@ -446,34 +477,50 @@ export default function StageRight() {
               </CardContent>
             </Card>
 
-            {/* Optional Edits (no defaults) Remove Materials*/}
+            {/* Optional Edits */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Optional Edits</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Flooring */}
+                {/* Room Condition */}
                 <div>
-                  <Label className="text-sm font-medium">Room Condition</Label>
-                  <div className="mt-2 flex items-center gap-4">
+                  <Label className="text-sm font-medium mb-3 block">Room Condition</Label>
+                  <div className="space-y-2">
                     <label className="flex items-center gap-2">
-                      <input type="radio" name="roomCondition" checked={roomCondition === 'furnished'} onChange={() => setRoomCondition('furnished')} />
+                      <input 
+                        type="radio" 
+                        name="roomCondition" 
+                        checked={roomCondition === 'furnished'} 
+                        onChange={() => setRoomCondition('furnished')} 
+                        className="w-4 h-4 text-blue-600"
+                      />
                       <span className="text-sm">Furnished (light restyle)</span>
                     </label>
                     <label className="flex items-center gap-2">
-                      <input type="radio" name="roomCondition" checked={roomCondition === 'vacant'} onChange={() => setRoomCondition('vacant')} />
+                      <input 
+                        type="radio" 
+                        name="roomCondition" 
+                        checked={roomCondition === 'vacant'} 
+                        onChange={() => setRoomCondition('vacant')} 
+                        className="w-4 h-4 text-blue-600"
+                      />
                       <span className="text-sm">Vacant (add furniture)</span>
                     </label>
                   </div>
+                </div>
 
-                  <Label className="text-sm font-medium">Flooring</Label>
-                  <div className="mt-2 flex items-center gap-3">
+                {/* Flooring */}
+                <div>
+                  <Label className="text-sm font-medium mb-3 block">Flooring</Label>
+                  <div className="space-y-2">
                     <label className="flex items-center gap-2">
                       <input
                         type="radio"
                         name="flooring"
                         checked={floorMode === 'keep'}
                         onChange={() => setFloorMode('keep')}
+                        className="w-4 h-4 text-blue-600"
                       />
                       <span className="text-sm">Keep as-is</span>
                     </label>
@@ -483,14 +530,17 @@ export default function StageRight() {
                         name="flooring"
                         checked={floorMode === 'change'}
                         onChange={() => setFloorMode('change')}
+                        className="w-4 h-4 text-blue-600"
                       />
                       <span className="text-sm">Change to</span>
                     </label>
+                  </div>
 
-                    {floorMode === 'change' && (
+                  {floorMode === 'change' && (
+                    <div className="mt-3">
                       <Select value={currentFloor} onValueChange={setCurrentFloor}>
-                        <SelectTrigger className="w-56">
-                          <SelectValue placeholder="Choose floor" />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose floor type" />
                         </SelectTrigger>
                         <SelectContent>
                           {FLOOR_TYPES.map(floor => (
@@ -500,20 +550,21 @@ export default function StageRight() {
                           ))}
                         </SelectContent>
                       </Select>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Walls */}
                 <div>
-                  <Label className="text-sm font-medium">Walls</Label>
-                  <div className="mt-2 flex items-center gap-3">
+                  <Label className="text-sm font-medium mb-3 block">Walls</Label>
+                  <div className="space-y-2">
                     <label className="flex items-center gap-2">
                       <input
                         type="radio"
                         name="walls"
                         checked={wallMode === 'keep'}
                         onChange={() => setWallMode('keep')}
+                        className="w-4 h-4 text-blue-600"
                       />
                       <span className="text-sm">Keep as-is</span>
                     </label>
@@ -523,43 +574,46 @@ export default function StageRight() {
                         name="walls"
                         checked={wallMode === 'repaint'}
                         onChange={() => setWallMode('repaint')}
+                        className="w-4 h-4 text-blue-600"
                       />
                       <span className="text-sm">Repaint</span>
                     </label>
                   </div>
 
                   {wallMode === 'repaint' && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {WALL_COLORS.map(color => (
-                        <button
-                          key={color}
-                          type="button"
-                          className={`w-8 h-8 rounded-full border-2 ${currentWallColor === color ? 'border-blue-500' : 'border-slate-300'
-                            }`}
-                          style={{ backgroundColor: color }}
-                          onClick={() => setCurrentWallColor(color)}
-                          aria-label={`Set wall color ${color}`}
-                        />
-                      ))}
+                    <div className="mt-3 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        {WALL_COLORS.map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            className={`w-8 h-8 rounded-full border-2 ${currentWallColor === color ? 'border-blue-500' : 'border-slate-300'
+                              }`}
+                            style={{ backgroundColor: color }}
+                            onClick={() => setCurrentWallColor(color)}
+                            aria-label={`Set wall color ${color}`}
+                          />
+                        ))}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Input
                           type="text"
                           value={currentWallColor}
                           onChange={(e) => setCurrentWallColor(e.target.value)}
-                          className="w-32"
+                          className="flex-1"
                           placeholder="#FFFFFF"
                         />
                         <span className="text-xs text-slate-500">Hex</span>
                       </div>
                     </div>
                   )}
+                  
                   {wallMode === 'keep' && (
                     <p className="text-xs text-slate-500 mt-2">Walls will not be repainted.</p>
                   )}
                 </div>
               </CardContent>
             </Card>
-
 
             {/* Options */}
             <Card>
@@ -569,7 +623,7 @@ export default function StageRight() {
                   Options
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent>
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium">Declutter & Depersonalize</Label>
                   <Switch checked={declutterEnabled} onCheckedChange={setDeclutterEnabled} />
@@ -577,7 +631,7 @@ export default function StageRight() {
               </CardContent>
             </Card>
 
-            {/* Batch Prompt */}
+            {/* Custom Prompt */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Custom Prompt</CardTitle>
@@ -630,12 +684,17 @@ export default function StageRight() {
           ) : (
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {photos.map(photo => (
-                <Card key={photo.id} className={`cursor-pointer transition-all ${selectedPhotos.includes(photo.id) ? 'ring-2 ring-blue-500' : ''
-                  }`}>
+                <Card key={photo.id} className={`cursor-pointer transition-all ${
+                  selectedPhotos.includes(photo.id) 
+                    ? 'ring-2 ring-blue-500' 
+                    : photo.status === 'completed' 
+                      ? 'ring-2 ring-green-500' 
+                      : ''
+                }`}>
                   <CardContent className="p-0">
                     <div className="relative">
                       <img
-                        src={showBefore ? photo.preview : (photo.editedUrl || photo.preview)}
+                        src={getDisplayImage(photo)}
                         alt="Property"
                         className="w-full h-48 object-cover rounded-t-lg"
                         onClick={() => togglePhotoSelection(photo.id)}
