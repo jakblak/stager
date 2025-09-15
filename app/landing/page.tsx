@@ -29,13 +29,13 @@ export default function LandingPage() {
     {
       icon: <Upload className="w-8 h-8" />,
       title: "Drag & Drop Upload",
-      description: "Upload up to 30 photos at once with our intuitive drag-and-drop interface. Supports JPG and PNG formats with automatic room detection.",
+      description: "Upload up to 10 photos at once with our intuitive drag-and-drop interface. Supports JPG and PNG formats with automatic room detection.",
       benefit: "Save 80% of your time on file management"
     },
     {
       icon: <Sparkles className="w-8 h-8" />,
       title: "AI Virtual Staging",
-      description: "Transform empty rooms with professional furniture and décor using Gemini 2.5 Flash AI. Maintains realistic perspective and lighting.",
+      description: "Transform empty rooms with professional furniture and décor using advanced AI. Maintains realistic perspective and lighting.",
       benefit: "Increase listing views by 40%"
     },
     {
@@ -89,7 +89,7 @@ export default function LandingPage() {
     { number: "10,000+", label: "Photos Staged" },
     { number: "500+", label: "Happy Agents" },
     { number: "40%", label: "More Views" },
-    { number: "< 30s", label: "Per Photo" }
+    { number: "Under 15s", label: "Per Photo" }
   ]
 
   return (
@@ -113,7 +113,7 @@ export default function LandingPage() {
                 Pricing
               </Link>
               <Button asChild>
-                <Link href="/">
+                <Link href="/dashboard">
                   Try Free
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Link>
@@ -124,14 +124,10 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 py-20 sm:py-32">
+      <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50 py-16 sm:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <Badge className="mb-6" variant="outline">
-                <Sparkles className="w-3 h-3 mr-1" />
-                Powered by Gemini AI
-              </Badge>
               <h1 className="text-5xl sm:text-6xl font-bold text-slate-900 mb-6 leading-tight">
                 Transform Listings with
                 <span className="text-blue-600 block">AI Virtual Staging</span>
@@ -141,7 +137,7 @@ export default function LandingPage() {
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
                 <Button size="lg" className="text-lg px-8 py-4" asChild>
-                  <Link href="/">
+                  <Link href="/dashboard">
                     Start Staging Free
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Link>
@@ -175,11 +171,11 @@ export default function LandingPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 rounded-lg p-4 text-center">
-                      <div className="text-2xl font-bold text-blue-600">30</div>
+                      <div className="text-2xl font-bold text-blue-600">10</div>
                       <div className="text-sm text-slate-600">Photos Ready</div>
                     </div>
                     <div className="bg-slate-50 rounded-lg p-4 text-center">
-                      <div className="text-2xl font-bold text-green-600"> 15 min</div>
+                      <div className="text-2xl font-bold text-green-600">Under 2min</div>
                       <div className="text-sm text-slate-600">Processing Time</div>
                     </div>
                   </div>
@@ -286,7 +282,7 @@ export default function LandingPage() {
                   </div>
                   <div className="p-8">
                     <Button className="w-full" size="lg" asChild>
-                      <Link href="/">
+                      <Link href="/dashboard">
                         Try This Feature
                         <ArrowRight className="w-4 h-4 ml-2" />
                       </Link>
@@ -349,13 +345,10 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Button size="lg" className="bg-white text-blue-600 hover:bg-slate-100 text-lg px-8 py-4" asChild>
-              <Link href="/">
+              <Link href="/dashboard">
                 Start Free Trial
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Link>
-            </Button>
-            <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 text-lg px-8 py-4">
-              Schedule Demo
             </Button>
           </div>
           <div className="mt-8 flex items-center justify-center space-x-6 text-sm text-blue-100">
@@ -393,7 +386,7 @@ export default function LandingPage() {
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-slate-400">
-                <li><Link href="/" className="hover:text-white transition-colors">Dashboard</Link></li>
+                <li><Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link></li>
                 <li><Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link></li>
                 <li><Link href="/features" className="hover:text-white transition-colors">Features</Link></li>
               </ul>
